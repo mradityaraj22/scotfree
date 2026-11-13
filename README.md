@@ -3,7 +3,8 @@
 A phone-friendly checklist of places in Scotland you can reach from Edinburgh on free under-22 (Young Scot) buses. Animal spots come first. It also has multi-day routes, hostel prices and student discounts.
 
 - `index.html`: the site (no build step)
-- `art.js`: the glowing constellation animal artwork
+- `animals.js`: every animal, its season, its photo and where to see it
+- `images/`: photos from Wikimedia Commons (credits in `images/credits.js` and the Info tab)
 - `data.js`: all places, routes and hostel prices. Edit this to add or fix places.
 
 ## Deploy on Vercel
