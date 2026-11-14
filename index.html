@@ -91,6 +91,11 @@ main{padding-top:calc(env(safe-area-inset-top,0px) + 12px);padding-bottom:calc(1
 .prog p{font-size:13px;color:var(--muted)}
 .pillbtn{margin-left:auto;flex:none;font-size:13px;font-weight:600;padding:8px 13px;border-radius:999px;background:var(--ink);color:var(--bg);transition:transform .25s var(--spring)}
 .pillbtn:active{transform:scale(.92)}
+.pillbtn.on{background:rgba(127,240,208,.14);color:var(--aur1);box-shadow:inset 0 0 0 1px rgba(127,240,208,.35)}
+.pillbtn.err{background:rgba(255,200,121,.14);color:var(--amber);box-shadow:inset 0 0 0 1px rgba(255,200,121,.35)}
+.codein{width:100%;font:inherit;font-size:24px;font-weight:700;letter-spacing:.18em;text-align:center;text-transform:uppercase;padding:14px;border-radius:16px;border:1px solid rgba(127,240,208,.3);background:rgba(127,240,208,.06);color:var(--ink)}
+.codein::placeholder{color:var(--muted);letter-spacing:.1em;font-weight:500}
+.linkbtn{justify-self:center;padding:8px 12px;color:var(--muted);font-size:14px}
 .hsec{display:flex;justify-content:space-between;align-items:baseline;margin:24px 0 12px}
 .hsec h2{font-family:var(--serif);font-size:24px;font-weight:600}
 .hsec button{font-size:14px;color:var(--aur1);font-weight:600}
@@ -238,7 +243,7 @@ ul.plain b{color:var(--ink)}
     <div class="prog">
       <div class="ring"><svg viewBox="0 0 62 62"><circle class="b" cx="31" cy="31" r="26"/><circle class="f" id="ring" cx="31" cy="31" r="26"/></svg><b class="nDone">0</b></div>
       <div><h2 id="progT">Let's start ticking.</h2><p id="progS">Tick places as you go.</p></div>
-      <button class="pillbtn" id="share">Sync</button>
+      <button class="pillbtn" id="syncBtn">☁︎ Sync</button>
     </div>
     <div class="hsec"><h2>Animals this month</h2><button data-v="animals">All animals</button></div>
     <div class="rail" id="rail"></div>
@@ -427,8 +432,54 @@ addEventListener("keydown",e=>{if(e.key==="Escape")closeSheet()});
   s.addEventListener("touchend",e=>{if(y0===null)return;const d=e.changedTouches[0].clientY-y0;s.style.transition="";s.style.transform="";if(d>110)closeSheet();y0=null});})();
 
 /* ---------- toggles ---------- */
-function toggleDone(id){const on=!done.has(id);on?done.add(id):done.delete(id);store("sf-done",done);if(on&&navigator.vibrate&&navigator.userActivation?.hasBeenActive)navigator.vibrate(10);progress();renderAnimals();return on}
-function toggleSaved(id){const on=!saved.has(id);on?saved.add(id):saved.delete(id);store("sf-saved",saved);progress();return on}
+function toggleDone(id){const on=!done.has(id);on?done.add(id):done.delete(id);store("sf-done",done);if(on&&navigator.vibrate&&navigator.userActivation?.hasBeenActive)navigator.vibrate(10);progress();renderAnimals();schedulePush();return on}
+function toggleSaved(id){const on=!saved.has(id);on?saved.add(id):saved.delete(id);store("sf-saved",saved);progress();schedulePush();return on}
+
+/* ---------- cloud sync with a shared code ---------- */
+let code=(()=>{try{return localStorage.getItem("sf-code")||""}catch(e){return ""}})();
+let pushT=null, inflight=false, dirty=(()=>{try{return localStorage.getItem("sf-dirty")==="1"}catch(e){return false}})();
+const setDirty=v=>{dirty=v;try{localStorage.setItem("sf-dirty",v?"1":"0")}catch(e){}};
+const same=(a,b)=>a.size===b.size&&[...a].every(x=>b.has(x));
+async function api(body){const r=await fetch("/api/ticks",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+  const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||"Cloud sync isn't available");return j}
+function rerender(){renderList();renderAnimals();progress()}
+function applyCloud(d){const nd=new Set(d.done||[]),ns=new Set(d.saved||[]);if(same(nd,done)&&same(ns,saved))return false;
+  done=nd;saved=ns;store("sf-done",done);store("sf-saved",saved);rerender();return true}
+function syncUI(state){const b=$("#syncBtn");b.classList.toggle("on",!!code&&state!=="err");b.classList.toggle("err",state==="err");
+  b.textContent=!code?"☁︎ Sync":state==="saving"?"☁︎ Saving…":state==="err"?"☁︎ Offline":"☁︎ "+code}
+async function pull(manual){if(!code||pushT||inflight)return;
+  if(dirty){await push();if(manual&&!dirty)toast("Saved your offline ticks");return}
+  try{const d=await api({action:"get",code});if(pushT||inflight)return;const changed=applyCloud(d);syncUI("ok");if(manual)toast(changed?"Got the latest ticks":"Already up to date");else if(changed)toast("Ticks updated from the other phone")}
+  catch(e){syncUI("err");if(manual)toast(e.message)}}
+function schedulePush(){if(!code)return;setDirty(true);clearTimeout(pushT);syncUI("saving");pushT=setTimeout(push,500)}
+async function push(){pushT=null;inflight=true;
+  try{await api({action:"set",code,done:[...done],saved:[...saved]});setDirty(false);syncUI("ok")}
+  catch(e){syncUI("err");toast("Saved on this phone. It will upload when you're back online.")}
+  inflight=false}
+async function connect(){const v=$("#codeIn").value.trim().toUpperCase(),btn=$("#syncGo");
+  if(v.length<4){toast("Use at least 4 letters or numbers");return}
+  btn.disabled=true;btn.textContent="Connecting…";
+  try{const d=await api({action:"get",code:v});
+    (d.done||[]).forEach(i=>byId[i]&&done.add(i));(d.saved||[]).forEach(i=>byId[i]&&saved.add(i));
+    store("sf-done",done);store("sf-saved",saved);
+    await api({action:"set",code:v,done:[...done],saved:[...saved]});
+    code=v;setDirty(false);try{localStorage.setItem("sf-code",code)}catch(e){}
+    rerender();syncUI("ok");closeSheet();toast(`Connected to ${code}. Ticks now save to the cloud.`)}
+  catch(e){toast(e.message);btn.disabled=false;btn.textContent=code?"Switch code":"Connect"}}
+function disconnect(){code="";try{localStorage.removeItem("sf-code")}catch(e){}syncUI();closeSheet();toast("Disconnected. Your ticks stay on this phone.")}
+function openSync(){sheetId=null;
+  openSheetHTML(`${ph("storr","sheet-ph",`<span class="grab"></span><div class="on-top"><h2 id="shT">Sync your ticks</h2><p class="sub">Same code on both phones = same checklist, anywhere.</p></div>`,false)}
+  <div class="sheet-in">
+    <input class="codein" id="codeIn" value="${esc(code)}" placeholder="YOUR CODE" autocapitalize="characters" autocomplete="off" autocorrect="off" spellcheck="false" maxlength="40" aria-label="Sync code">
+    ${code?`<div class="box animal"><span class="l">Connected</span>This phone saves every tick to the cloud under <b>${esc(code)}</b>. Open the site on any phone, enter the same code, and your ticks are there.</div>`
+          :`<p class="dim" style="font-size:15px">Pick a code you both remember and type it here on each phone. Ticks you've already made on this phone are added to the code.</p>`}
+    <div class="actions"><button class="primary" id="syncGo">${code?"Switch code":"Connect"}</button>${code?`<button id="syncNow">Sync now</button>`:`<button data-close>Cancel</button>`}</div>
+    ${code?`<button class="linkbtn" id="syncOff">Disconnect this phone</button>`:""}
+    <p class="dim" style="font-size:12.5px">Anyone who knows the code can see and change your ticks, so don't share it.</p>
+  </div>`);
+  const i=$("#codeIn");i.addEventListener("keydown",e=>{if(e.key==="Enter")connect()});if(!code)setTimeout(()=>i.focus(),450);}
+document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible")pull()});
+setInterval(()=>{if(document.visibilityState==="visible")pull()},20000);
 function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("show");clearTimeout(toast.t);toast.t=setTimeout(()=>t.classList.remove("show"),2400)}
 
 function show(v){closeSheet();$$(".view").forEach(s=>s.classList.toggle("on",s.id==="v-"+v));$$(".tabs button").forEach(b=>b.setAttribute("aria-selected",b.dataset.v===v));
@@ -443,9 +494,11 @@ document.addEventListener("click",e=>{const b=e.target.closest("button");if(!b)r
   else if(b.dataset.sheart!==undefined){const on=toggleSaved(sheetId);b.classList.toggle("is",on);b.textContent=on?"♥ On our list":"♡ Want to go";renderList()}
   else if(b.dataset.len){len=b.dataset.len;q="";$("#q").value="";$$("#segs button").forEach(x=>x.setAttribute("aria-pressed",x===b));renderList();b.scrollIntoView({inline:"center",block:"nearest",behavior:reduce?"auto":"smooth"})}
   else if(b.dataset.f){filter=filter===b.dataset.f?null:b.dataset.f;$$("#chips button").forEach(x=>x.setAttribute("aria-pressed",x.dataset.f===filter));renderList()}
-  else if(b.id==="share"){const url=location.origin+location.pathname+"#sync=d:"+[...done].join(".")+";s:"+[...saved].join(".");
-    if(navigator.share)navigator.share({title:"Scotland for £0",text:"Open this to sync our checklist",url}).catch(()=>{});
-    else if(navigator.clipboard)navigator.clipboard.writeText(url).then(()=>toast("Sync link copied. Open it on the other phone."),()=>toast("Couldn't copy the link"));}
+  else if(b.id==="syncBtn")openSync();
+  else if(b.id==="syncGo")connect();
+  else if(b.id==="syncNow")pull(true);
+  else if(b.id==="syncOff")disconnect();
+  else if(b.dataset.close!==undefined)closeSheet();
 });
 $("#q").addEventListener("input",e=>{q=e.target.value;renderList()});
 
@@ -459,6 +512,7 @@ $("#credits").innerHTML=Object.values(CREDITS).map(c=>`<div><a href="${esc(c.pag
 renderList();renderAnimals();progress();
 try{const v=localStorage.getItem("sf-view");if(v&&document.getElementById("v-"+v))show(v)}catch(e){}
 if(synced)setTimeout(()=>toast(synced),600);
+syncUI();if(code)pull();
 </script>
 </body>
 </html>
