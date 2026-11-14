@@ -140,8 +140,9 @@ sequenceDiagram
 
 1. Click **Deploy with Vercel** above, or import this repo in Vercel with Framework Preset **Other** and no build command.
 2. In the Vercel project, open **Storage → Create Database → Upstash for Redis** (free plan) and connect it to the project.
-3. Redeploy (Deployments → ⋯ → Redeploy).
-4. Open the site, tap **☁︎ Sync**, and pick your own private code.
+3. Recommended: add a secret key. In **Settings → Environment Variables**, add `SYNC_SECRET` with a long random value (run `openssl rand -hex 32` in a terminal to make one) for Production and Preview.
+4. Redeploy (Deployments → ⋯ → Redeploy).
+5. Open the site, tap **☁︎ Sync**, and pick your own private code.
 
 The site works without step 2. Ticks are then saved on each phone only.
 
@@ -152,7 +153,8 @@ The site works without step 2. Ticks are then saved on each phone only.
 
 | File | What it does |
 |---|---|
-| `index.html` | The whole app: screens, styles and logic. No build step. |
+| `index.html` | Screens and styles. No build step. |
+| `app.js` | App logic (kept out of the HTML for the strict security policy). |
 | `data.js` | All places, routes and hostel prices. Edit this to add or fix places. |
 | `animals.js` | Every animal, its season and where to see it. |
 | `api/ticks.js` | Vercel function that saves ticks for a sync code. |
@@ -164,11 +166,16 @@ The site works without step 2. Ticks are then saved on each phone only.
 
 ## 🔒 Security & privacy
 
-- **No secrets in this repo.** The database URL and token are Vercel environment variables. `.gitignore` blocks `.env` files.
-- **Sync codes are never stored as-is.** Ticks are saved under a SHA-256 hash of the code. Codes are 6–40 letters or numbers.
-- **The API is locked down:** it only accepts requests from the site itself, validates every field, and allows 60 requests a minute per visitor.
-- **Strict security headers** (Content Security Policy, no framing, HSTS) are set in `vercel.json`.
-- **Keep your code private.** Anyone who knows it can see and change that checklist. Pick something only you two know.
+| Layer | Protection |
+|---|---|
+| 🔑 Secrets | None in this repo. Database keys and `SYNC_SECRET` live only in Vercel environment variables. `.gitignore` blocks `.env` files. |
+| 🧂 Sync codes | Never stored as typed. Saved as an HMAC-SHA256 of the code with a server-only secret, so a copy of the database can't be used to guess codes. |
+| 🚦 API | Same-site requests only, JSON only, 20 KB body limit, every field validated, 60 requests per minute per visitor. Errors don't reveal internals. |
+| ↩️ Undo | The previous version of each checklist is kept for 30 days and can be restored from the Sync screen. |
+| 🛡️ Browser | Strict Content Security Policy with no inline scripts, no third-party code, no framing, HSTS, and a locked-down Permissions-Policy. |
+| 👤 Privacy | No analytics, no cookies, no tracking, no third-party requests. Commits use a GitHub noreply email. |
+
+> **Keep your code private.** Anyone who knows it can see and change that checklist. Longer codes mixing letters and numbers are much harder to guess.
 
 See [SECURITY.md](SECURITY.md) for how to report a problem.
 
