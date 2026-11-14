@@ -1,0 +1,8 @@
+# Secrets and local config: never commit these
+.env
+.env.*
+.vercel/
+.claude/
+node_modules/
+.DS_Store
+*.log

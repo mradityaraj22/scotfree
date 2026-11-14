@@ -412,7 +412,7 @@ function openPlace(id){const p=byId[id];sheetId=id;const st=p.stay&&STAYS[p.stay
   <div class="sheet-in">
     ${p.a?`<div class="box animal"><span class="l">Animals${animals.length?" · "+animals.map(a=>esc(a.n)).join(", "):""}</span>${esc(p.a.replace(/^⭐\s*/,""))}</div>`:""}
     <div class="box"><span class="l" style="color:var(--muted)">What to do</span>${esc(p.see)}${p.see2?`<div class="dim">${esc(p.see2)}</div>`:""}</div>
-    <div class="box bus"><span class="l">Free bus</span>${esc(p.bus.map(b=>b[0]).join(" → "))}</div>
+    <div class="box bus"><span class="l">Free bus</span>${esc(p.bus.flat().join(" · "))}</div>
     ${p.paid?`<div class="box pay"><span class="l">Student prices</span>${p.paid.map(d=>`<div>${esc(d[0])} <span class="tier">${esc(d[1])}</span>${d[2]?` <span class="dim">· ${esc(d[2])}</span>`:""}</div>`).join("")}</div>`:""}
     ${p.ferry?`<div class="box ferry"><span class="l">Ferry (not free)</span>${esc(p.ferry)}</div>`:""}
     ${st?`<div class="box stay"><span class="l">Stay · ${esc(st.w)}</span>Dorm ${esc(st.d)} each · room ${esc(st.r)}${st.n?`<div class="dim">${esc(st.n)}</div>`:""}</div>`:""}
@@ -457,7 +457,7 @@ async function push(){pushT=null;inflight=true;
   catch(e){syncUI("err");toast("Saved on this phone. It will upload when you're back online.")}
   inflight=false}
 async function connect(){const v=$("#codeIn").value.trim().toUpperCase(),btn=$("#syncGo");
-  if(v.length<4){toast("Use at least 4 letters or numbers");return}
+  if(!/^[A-Z0-9]{6,40}$/.test(v)){toast("Use 6–40 letters or numbers, no spaces");return}
   btn.disabled=true;btn.textContent="Connecting…";
   try{const d=await api({action:"get",code:v});
     (d.done||[]).forEach(i=>byId[i]&&done.add(i));(d.saved||[]).forEach(i=>byId[i]&&saved.add(i));
